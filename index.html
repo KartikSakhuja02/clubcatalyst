@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>60 Second Sky Scramble</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to bottom, #87CEEB, #98FB98);
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        #cannon {
+            position: absolute;
+            bottom: 20px;
+            width: 60px;
+            height: 40px;
+            background: #8B4513;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        
+        .bullet {
+            position: absolute;
+            width: 4px;
+            height: 10px;
+            background: #FFD700;
+            border-radius: 2px;
+        }
+        
+        .cloud {
+            position: absolute;
+            width: 80px;
+            height: 50px;
+            border-radius: 50px;
+            cursor: pointer;
+        }
+        
+        .white-cloud {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .black-cloud {
+            background: #333;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+        }
+        
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 200;
+        }
+        
+        #startScreen h1, #gameOverScreen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        button {
+            font-size: 24px;
+            padding: 15px 30px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        .hit-animation {
+            animation: hit 0.3s ease-out;
+        }
+        
+        @keyframes hit {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="ui">
+            <div>Score: <span id="score">0</span></div>
+            <div>Time: <span id="timer">01:00</span></div>
+        </div>
+        
+        <div id="cannon"></div>
+        
+        <div id="startScreen">
+            <h1>60 Second Sky Scramble</h1>
+            <p style="font-size: 18px; margin-bottom: 30px; text-align: center;">
+                Shoot white clouds (+10 points)<br>
+                Avoid black clouds (-5 points)<br>
+                You have 60 seconds!
+            </p>
+            <button onclick="startGame()">Start Game</button>
+        </div>
+        
+        <div id="gameOverScreen" style="display: none;">
+            <h1>Game Over!</h1>
+            <p style="font-size: 32px; margin-bottom: 30px;">Final Score: <span id="finalScore">0</span></p>
+            <button onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        let gameState = {
+            score: 0,
+            timeLeft: 60,
+            gameRunning: false,
+            cannonX: window.innerWidth / 2 - 30,
+            bullets: [],
+            clouds: [],
+            gameTimer: null,
+            cloudSpawnTimer: null
+        };
+
+        const cannon = document.getElementById('cannon');
+        const scoreEl = document.getElementById('score');
+        const timerEl = document.getElementById('timer');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreEl = document.getElementById('finalScore');
+
+        // Position cannon initially
+        cannon.style.left = gameState.cannonX + 'px';
+
+        // Mouse movement for cannon
+        document.addEventListener('mousemove', (e) => {
+            if (!gameState.gameRunning) return;
+            gameState.cannonX = Math.max(0, Math.min(window.innerWidth - 60, e.clientX - 30));
+            cannon.style.left = gameState.cannonX + 'px';
+        });
+
+        // Click to shoot
+        document.addEventListener('click', (e) => {
+            if (!gameState.gameRunning) return;
+            shoot();
+        });
+
+        function startGame() {
+            gameState.score = 0;
+            gameState.timeLeft = 60;
+            gameState.gameRunning = true;
+            gameState.bullets = [];
+            gameState.clouds = [];
+            
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            
+            updateUI();
+            
+            // Start game timer
+            gameState.gameTimer = setInterval(() => {
+                gameState.timeLeft--;
+                updateUI();
+                if (gameState.timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+            
+            // Start cloud spawning
+            gameState.cloudSpawnTimer = setInterval(spawnCloud, 500);
+            
+            // Start game loop
+            gameLoop();
+        }
+
+        function endGame() {
+            gameState.gameRunning = false;
+            clearInterval(gameState.gameTimer);
+            clearInterval(gameState.cloudSpawnTimer);
+            
+            finalScoreEl.textContent = gameState.score;
+            gameOverScreen.style.display = 'flex';
+            
+            // Clear all game objects
+            document.querySelectorAll('.bullet, .cloud').forEach(el => el.remove());
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function shoot() {
+            const bullet = document.createElement('div');
+            bullet.className = 'bullet';
+            bullet.style.left = (gameState.cannonX + 28) + 'px';
+            bullet.style.bottom = '60px';
+            document.getElementById('gameContainer').appendChild(bullet);
+            
+            gameState.bullets.push({
+                element: bullet,
+                x: gameState.cannonX + 28,
+                y: window.innerHeight - 60
+            });
+        }
+
+        function spawnCloud() {
+            if (!gameState.gameRunning) return;
+            
+            const cloud = document.createElement('div');
+            const isWhite = Math.random() > 0.5; // 50% white clouds
+            cloud.className = `cloud ${isWhite ? 'white-cloud' : 'black-cloud'}`;
+            
+            const x = Math.random() * (window.innerWidth - 80);
+            cloud.style.left = x + 'px';
+            cloud.style.top = '-50px';
+            
+            document.getElementById('gameContainer').appendChild(cloud);
+            
+            gameState.clouds.push({
+                element: cloud,
+                x: x,
+                y: -50,
+                isWhite: isWhite
+            });
+        }
+
+        function gameLoop() {
+            if (!gameState.gameRunning) return;
+            
+            // Move bullets
+            gameState.bullets.forEach((bullet, bulletIndex) => {
+                bullet.y -= 6;
+                bullet.element.style.bottom = (window.innerHeight - bullet.y) + 'px';
+                
+                // Remove bullets that go off screen
+                if (bullet.y < 0) {
+                    bullet.element.remove();
+                    gameState.bullets.splice(bulletIndex, 1);
+                }
+            });
+            
+            // Move clouds
+            gameState.clouds.forEach((cloud, cloudIndex) => {
+                cloud.y += 6;
+                cloud.element.style.top = cloud.y + 'px';
+                
+                // Remove clouds that go off screen
+                if (cloud.y > window.innerHeight) {
+                    cloud.element.remove();
+                    gameState.clouds.splice(cloudIndex, 1);
+                }
+            });
+            
+            // Check collisions
+            gameState.bullets.forEach((bullet, bulletIndex) => {
+                gameState.clouds.forEach((cloud, cloudIndex) => {
+                    if (checkCollision(bullet, cloud)) {
+                        // Hit animation
+                        cloud.element.classList.add('hit-animation');
+                        
+                        // Update score
+                        gameState.score += cloud.isWhite ? 10 : -5;
+                        updateUI();
+                        
+                        // Remove bullet and cloud
+                        setTimeout(() => {
+                            bullet.element.remove();
+                            cloud.element.remove();
+                        }, 100);
+                        
+                        gameState.bullets.splice(bulletIndex, 1);
+                        gameState.clouds.splice(cloudIndex, 1);
+                    }
+                });
+            });
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        function checkCollision(bullet, cloud) {
+            const bulletRect = {
+                x: bullet.x,
+                y: bullet.y,
+                width: 4,
+                height: 10
+            };
+            
+            const cloudRect = {
+                x: cloud.x,
+                y: cloud.y,
+                width: 80,
+                height: 50
+            };
+            
+            return bulletRect.x < cloudRect.x + cloudRect.width &&
+                   bulletRect.x + bulletRect.width > cloudRect.x &&
+                   bulletRect.y < cloudRect.y + cloudRect.height &&
+                   bulletRect.y + bulletRect.height > cloudRect.y;
+        }
+
+        function updateUI() {
+            scoreEl.textContent = gameState.score;
+            const minutes = Math.floor(gameState.timeLeft / 60);
+            const seconds = gameState.timeLeft % 60;
+            timerEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+    </script>
+</body>
+</html>2
